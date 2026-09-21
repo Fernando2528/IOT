@@ -19,35 +19,16 @@ IR_KEYMAP = {
 
 
 # ==========================================================
-# CONTROLADOR CENTRAL DE ALARMA, PUERTA Y SIRENA
+# 1. SENSOR IR: CAPTURA DIRECTA Y PUBLICACIÓN DE TECLAS
 # ==========================================================
-class SecurityAlarmSystem(Task):
-    def __init__(
-        self,
-        scheduler,
-        pubsub,
-        gpio_ir=2,
-        gpio_door=1,
-        secret_code="1111",
-        cooldown_ms=300,
-    ):
+class IRReaderTask(Task):
+    def __init__(self, scheduler, pubsub, gpio_ir=2, cooldown_ms=250):
         self.pubsub = pubsub
         self.ir = Pin(gpio_ir, Pin.IN, Pin.PULL_UP)
-        self.door = Pin(gpio_door, Pin.IN, Pin.PULL_DOWN)
-        self.siren_led = Pin("LED", Pin.OUT)
-        self.siren_led.value(0)
-
-        self.secret_code = secret_code
         self.cooldown_ms = cooldown_ms
         self.last_press = 0
-        self.buffer = ""
-
-        # Estados: 'DISARMED', 'ARMED', 'TRIGGERED'
-        self.state = "DISARMED"
-        self.last_door_val = -1
-
         super().__init__(scheduler, period_ms=3)
-        print(f"Sistema de Seguridad iniciado. Clave: '{secret_code}'")
+        print(f"Lector IR activo en GP{gpio_ir}. Listo para capturar control...")
 
     def _decode_nec(self):
         t0 = time.ticks_us()
@@ -84,44 +65,11 @@ class SecurityAlarmSystem(Task):
 
         return hex(cmd)
 
-    def set_siren(self, state: int):
-        self.siren_led.value(state)
-        self.pubsub.publish("led/LED", {"value": state})
-
-    def publish_status(self, reason: str):
-        print(f"[ESTADO] {self.state} | Sirena: {self.siren_led.value()} | Causa: {reason}")
-        self.pubsub.publish(
-            "alarm/status",
-            {
-                "state": self.state,
-                "siren": self.siren_led.value(),
-                "reason": reason,
-            },
-        )
-
     def update(self):
-        now = time.ticks_ms()
-
-        # 1. Monitoreo de Sensor de Puerta (GP1)
-        door_val = self.door.value()
-        if door_val != self.last_door_val:
-            self.last_door_val = door_val
-            estado_puerta = "ABIERTA" if door_val == 1 else "CERRADA"
-            print(f"[PUERTA] Sensor GP1: {estado_puerta}")
-            self.pubsub.publish(
-                "alarm/door", {"open": door_val, "status": estado_puerta}
-            )
-
-            # Si la puerta se abre con la alarma armada -> Disparar sirena
-            if door_val == 1 and self.state == "ARMED":
-                self.state = "TRIGGERED"
-                self.set_siren(1)
-                self.publish_status("¡INTRUSIÓN! Puerta abierta con alarma armada")
-
-        # 2. Monitoreo de Entrada IR (GP2)
         if self.ir.value() == 1:
             return
 
+        now = time.ticks_ms()
         if time.ticks_diff(now, self.last_press) < self.cooldown_ms:
             return
 
@@ -131,44 +79,42 @@ class SecurityAlarmSystem(Task):
 
         self.last_press = now
         digit = IR_KEYMAP[cmd_hex]
-        self.buffer += digit
 
-        print(f"[IR] Tecla: '{digit}' | Cadena: [{self.buffer}] ({len(self.buffer)}/4)")
-        self.pubsub.publish(
-            "alarm/key",
-            {
-                "key": digit,
-                "digits": len(self.buffer),
-                "buffer": self.buffer,
-            },
-        )
-
-        # 3. Evaluación de clave de 4 dígitos
-        if len(self.buffer) == 4:
-            entered_code = self.buffer
-            self.buffer = ""
-
-            if entered_code == self.secret_code:
-                if self.state == "DISARMED":
-                    self.state = "ARMED"
-                    self.set_siren(0)
-                    self.publish_status("Clave correcta: Sistema ARMADO")
-                else:
-                    self.state = "DISARMED"
-                    self.set_siren(0)
-                    self.publish_status(
-                        "Clave correcta: Alarma DESACTIVADA / Silenciada"
-                    )
-            else:
-                self.state = "TRIGGERED"
-                self.set_siren(1)
-                self.publish_status(
-                    f"¡ALERTA! Clave incorrecta ingresada ({entered_code})"
-                )
+        print(f"[IR] Tecla detectada: '{digit}' -> Enviando a la interfaz")
+        self.pubsub.publish("alarm/key", {"key": digit})
 
 
 # ==========================================================
-# LANZADOR PRINCIPAL Y BLINDAJE DE RED
+# 2. ACTUADOR DE SIRENA (LED ONBOARD BLINDADO)
+# ==========================================================
+class LEDSirenActuator:
+    def __init__(self, pubsub):
+        self.pubsub = pubsub
+        self.pin = Pin("LED", Pin.OUT)
+        self.pin.value(0)
+        # Suscripción segura compatible con cualquier firma de argumentos
+        self.pubsub.subscribe("led/LED", self._on_led_cmd)
+
+    def _on_led_cmd(self, *args, **kwargs):
+        try:
+            msg = args[0] if len(args) > 0 else kwargs.get("msg", {})
+            if isinstance(msg, (str, bytes)):
+                data = json.loads(msg)
+            elif isinstance(msg, dict):
+                data = msg
+            else:
+                data = {"value": int(msg)}
+
+            val = int(data.get("value", 0))
+            self.pin.value(val)
+            estado_txt = "ENCENDIDO (Sirena Activa)" if val == 1 else "APAGADO"
+            print(f"[ACTUADOR] LED físico ajustado a: {val} -> {estado_txt}")
+        except Exception as e:
+            print("[ACTUADOR] Error al procesar comando LED:", e)
+
+
+# ==========================================================
+# LANZADOR PRINCIPAL
 # ==========================================================
 if __name__ == "__main__":
     from node import Node
@@ -177,62 +123,20 @@ if __name__ == "__main__":
     from watchdog_task import WatchdogTask
     from wifi_manager import WiFiManager
 
-    # Funciones de recuperación ante desconexiones de socket
-    _orig_mqtt_publish = PubSubMQTT.publish
-    _orig_mqtt_update = PubSubMQTT.update
-
-    def _reconnect_client(instance):
-        try:
-            print("\n[MQTT] Socket cerrado por el broker. Reconectando...")
-            try:
-                instance.mqtt.sock.close()
-            except Exception:
-                pass
-            instance.mqtt.connect()
-            instance.mqtt.subscribe(instance.prefix + "#")
-            print("[MQTT] Reconexión exitosa.")
-            return True
-        except Exception as e:
-            print(f"[MQTT] Reintento fallido ({e}). Se reintentará en el siguiente ciclo.")
-            return False
-
-    def _safe_mqtt_publish(self, topic, msg):
-        try:
-            _orig_mqtt_publish(self, topic, msg)
-        except OSError as err:
-            print(f"\n[AVISO MQTT] Error en socket al publicar ({err}).")
-            if _reconnect_client(self):
-                try:
-                    _orig_mqtt_publish(self, topic, msg)
-                except Exception:
-                    pass
-
-    def _safe_mqtt_update(self):
-        try:
-            _orig_mqtt_update(self)
-        except OSError as err:
-            print(f"\n[AVISO MQTT] Error en socket al recibir ({err}).")
-            _reconnect_client(self)
-
-    # Reemplazo de métodos para capturar fallos de red
-    PubSubMQTT.publish = _safe_mqtt_publish
-    PubSubMQTT.update = _safe_mqtt_update
-
     SSID = "PruebaPi"
     PASSWORD = "444555666777"
     MQTT_BROKER = "broker.hivemq.com"
 
-    unique_id = machine.unique_id().hex()[-4:]
-    NODE_NAME = f"emb_node_{unique_id}"
+    unique_hw = machine.unique_id().hex()[-4:]
+    session_salt = str(time.ticks_ms() % 10000)
+    NODE_NAME = f"emb_{unique_hw}_{session_salt}"
     PREFIX = "UDFJC/iot_ws/robot0/"
 
     scheduler = Scheduler()
-    print("Scheduler inicializado")
-
     wifi = WiFiManager(ssid=SSID, password=PASSWORD)
     node = Node(prefix=PREFIX, node_name=NODE_NAME)
 
-    PubSubMQTT(
+    mqtt_task = PubSubMQTT(
         client_id=NODE_NAME,
         broker=MQTT_BROKER,
         scheduler=scheduler,
@@ -243,14 +147,9 @@ if __name__ == "__main__":
 
     WatchdogTask(scheduler=scheduler, pubsub=node, wifi=wifi, period_ms=9000)
 
-    SecurityAlarmSystem(
-        scheduler,
-        node,
-        gpio_ir=2,
-        gpio_door=1,
-        secret_code="1111",
-        cooldown_ms=300,
-    )
+    # Componentes de entrada y salida
+    IRReaderTask(scheduler, node, gpio_ir=2, cooldown_ms=250)
+    LEDSirenActuator(node)
 
-    print("Sistema de alarma con recuperación de red listo.")
+    print(f"Pico W lista como periférico de E/S con ID '{NODE_NAME}'. Ejecutando...")
     scheduler.run()
