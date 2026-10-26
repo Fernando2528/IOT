@@ -41,8 +41,8 @@ PIN_IN3 = "GP17"
 PIN_IN4 = "GP16"
 
 # Si utilizas un L298N con jumpers ENA/ENB retirados (6 hilos), puedes definir:
-# PIN_ENA = "GP6"
-# PIN_ENB = "GP7"
+ PIN_ENA = "GP6"
+ PIN_ENB = "GP7"
 PIN_ENA = None
 PIN_ENB = None
 
