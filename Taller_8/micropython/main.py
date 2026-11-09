@@ -9,7 +9,7 @@ Integra todos los conceptos desarrollados en el curso:
 - Planificador cooperativo de tareas en tiempo real (Scheduler + Task)
 - Bus de mensajes distribuido (Node + PubSubMQTT)
 - Supervisión de salud del sistema (WatchdogTask)
-- Control cinemático diferencial de las dos ruedas (Clase CAR en GP19, GP18, GP17, GP16)
+- Control cinemático diferencial de las dos ruedas (Clase CAR en GP16, GP17, GP18, GP19)
 - Control PWM de servomotor auxiliar del brazo mecánico (Clase Servo en GP12)
 """
 
@@ -32,19 +32,18 @@ MQTT_BROKER = "broker.hivemq.com"
 PORT = 1883
 PREFIX = "UDFJC/iot_ws/robot0/"
 
-# Pines del Puente H según el esquema oficial del Taller 8:
-# GP19 -> IN1, GP18 -> IN2 (Motor Izquierdo / A)
-# GP17 -> IN3, GP16 -> IN4 (Motor Derecho   / B)
-PIN_IN1 = "GP19"
-PIN_IN2 = "GP18"
-PIN_IN3 = "GP17"
-PIN_IN4 = "GP16"
+# ==========================================================
+# CONFIGURACIÓN DE PINES DEL PUENTE H (L298N)
+# ==========================================================
+# Cableado físico verificado:
+PIN_IN1 = "GP16"  # Motor Izquierdo (Canal A) IN1
+PIN_IN2 = "GP17"  # Motor Izquierdo (Canal A) IN2
+PIN_IN3 = "GP18"  # Motor Derecho   (Canal B) IN3
+PIN_IN4 = "GP19"  # Motor Derecho   (Canal B) IN4
 
-# Si utilizas un L298N con jumpers ENA/ENB retirados (6 hilos), puedes definir:
- PIN_ENA = "GP6"
- PIN_ENB = "GP7"
-PIN_ENA = None
-PIN_ENB = None
+# Pines Enable PWM (con jumpers retirados del L298N):
+PIN_ENA = "GP6"   # PWM Velocidad Motor Izquierdo (ENA)
+PIN_ENB = "GP7"   # PWM Velocidad Motor Derecho   (ENB)
 
 # Parámetros físicos del chasis diferencial (ajustables también desde Flet):
 HALF_TRACK_D = 0.0675  # Distancia d del centro a cada rueda (m) -> 2*d = 13.5 cm entre ruedas
@@ -66,6 +65,10 @@ def main():
 
     # 2. Conectar a Wi-Fi
     wifi = WiFiManager(ssid=SSID, password=PASSWORD)
+    if not wifi.is_connected():
+        print("[!] No se pudo conectar a la red Wi-Fi.")
+        print("[!] Verifica que la zona Wi-Fi esté activa, la banda sea de 2.4 GHz y las credenciales coincidan.")
+        return
 
     # 3. Inicializar Nodo PicoROS y Transporte MQTT
     node = Node(prefix=PREFIX, node_name=node_name)
@@ -82,7 +85,7 @@ def main():
     # 4. Inicializar Watchdog y Telemetría de Estado
     WatchdogTask(scheduler=scheduler, pubsub=node, wifi=wifi, period_ms=8000)
 
-    # 5. Inicializar Clase CAR (Cinemática Diferencial en GP19, GP18, GP17, GP16)
+    # 5. Inicializar Clase CAR (Cinemática Diferencial en GP16, GP17, GP18, GP19)
     CAR(
         scheduler=scheduler,
         pubsub=node,

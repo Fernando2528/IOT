@@ -183,7 +183,7 @@ def main(page: ft.Page):
         value="90.0",
         label="Ángulo Manual (°)",
         hint_text="Ej: 0, 45, 73.5, 180",
-        suffix_text="°",
+        suffix="°",
         width=170,
         text_align=ft.TextAlign.RIGHT,
         keyboard_type=ft.KeyboardType.NUMBER,
@@ -445,4 +445,7 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    if hasattr(ft, "run"):
+        ft.run(main)
+    else:
+        ft.app(target=main)

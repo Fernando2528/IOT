@@ -21,12 +21,27 @@ class WiFiManager:
         if self.wlan.isconnected():
             return True
 
+        status_names = {
+            0: "0 (STAT_IDLE / Link Down)",
+            1: "1 (STAT_CONNECTING / Link Join)",
+            2: "2 (STAT_NO_IP / Link NoIp)",
+            3: "3 (STAT_GOT_IP / Link Up - OK)",
+            -1: "-1 (STAT_CONNECT_FAIL / Link Fail)",
+            -2: "-2 (STAT_NO_AP_FOUND / Link NoNet - Red no encontrada)",
+            -3: "-3 (STAT_WRONG_PASSWORD / Link BadAuth - Clave incorrecta)",
+        }
+
         print(f"[WiFi] Conectando a '{self.ssid}'...")
         self.wlan.connect(self.ssid, self.password)
         t0 = time.time()
+        last_status = None
         while not self.wlan.isconnected():
+            st = self.wlan.status()
+            if st != last_status:
+                print(f"[WiFi] Estado actual: {status_names.get(st, str(st))}")
+                last_status = st
             if time.time() - t0 > self.timeout_s:
-                print("[WiFi] Tiempo de espera agotado al conectar.")
+                print(f"[WiFi] Tiempo de espera agotado ({self.timeout_s}s). Último estado: {status_names.get(st, str(st))}")
                 return False
             time.sleep(0.5)
 

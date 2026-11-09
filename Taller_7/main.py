@@ -19,4 +19,7 @@ import flet as ft
 from main import main as flet_app_main
 
 if __name__ == "__main__":
-    ft.app(target=flet_app_main)
+    if hasattr(ft, "run"):
+        ft.run(flet_app_main)
+    else:
+        ft.app(target=flet_app_main)

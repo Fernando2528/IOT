@@ -1,0 +1,39 @@
+{
+  "action": "create",
+  "name": "odd",
+  "run_at": "now",
+  "states": [
+    {
+      "v_dm/s": 0,
+      "w_deg/s": 45,
+      "alpha0_deg": 0,
+      "duration_s": 2
+    },
+    {
+      "v_dm/s": 0,
+      "w_deg/s": -45,
+      "alpha0_deg": 90,
+      "alpha1_deg": 67.5,
+      "alpha2_deg": -67.5,
+      "duration_s": 2
+    },
+    {
+      "v_dm/s": -1.5708,
+      "w_deg/s": 36,
+      "duration_s": 5
+    },
+    {
+      "v_dm/s": 0,
+      "w_deg/s": 0,
+      "alpha0_deg": -90,
+      "alpha1_deg": 0,
+      "alpha2_deg": 0,
+      "duration_s": 2
+    },
+    {
+      "v_dm/s": 1.5708,
+      "w_deg/s": 36,
+      "duration_s": 5
+    }
+  ]
+}

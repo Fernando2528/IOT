@@ -304,7 +304,7 @@ def main(page: ft.Page):
     tf_servo_deg = ft.TextField(
         value="90.0",
         label="Ángulo Servo Brazo GP12 (°)",
-        suffix_text="°",
+        suffix="°",
         width=185,
     )
 
@@ -582,4 +582,7 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    if hasattr(ft, "run"):
+        ft.run(main)
+    else:
+        ft.app(target=main)
